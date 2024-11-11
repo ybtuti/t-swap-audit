@@ -247,6 +247,16 @@ contract TSwapPool is ERC20 {
         revertIfZero(outputReserves)
         returns (uint256 inputAmount)
     {
+        // x * y = k
+        // x * y = (x + dx) * (y - dy)
+        // x * y = (x + dx) * (y - outputAmount)
+        // x * y = x*y - outputAmount*x + dx*y - dx*outputAmount
+
+        // x*outputAmount = dx*y - dx*outputAmount
+        // inputReserves*outputAmount = inputAmount(outputReserves - outputAmount)
+        // inputAmount = (inputReserves * outputAmount) / (outputReserves - outputAmount)
+        // plus fees... ignore for now
+
         return ((inputReserves * outputAmount) * 10000) / ((outputReserves - outputAmount) * 997);
     }
 
@@ -327,7 +337,9 @@ contract TSwapPool is ERC20 {
             revert TSwapPool__InvalidToken();
         }
 
+        // @audit breaks protocol invariant!!!!
         swap_count++;
+        // fee on Transfer
         if (swap_count >= SWAP_COUNT_MAX) {
             swap_count = 0;
             outputToken.safeTransfer(msg.sender, 1_000_000_000_000_000_000);
