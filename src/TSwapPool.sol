@@ -73,6 +73,7 @@ contract TSwapPool is ERC20 {
     )
         ERC20(liquidityTokenName, liquidityTokenSymbol)
     {
+        // @audit-info Lacking zero address check
         i_wethToken = IERC20(wethToken);
         i_poolToken = IERC20(poolToken);
     }
@@ -92,10 +93,14 @@ contract TSwapPool is ERC20 {
     /// @param deadline The deadline for the transaction to be completed by
 
     // q if it is empty, how does it "warm up"?
+    // e looked at it
     function deposit(
         uint256 wethToDeposit,
         uint256 minimumLiquidityTokensToMint,
         uint256 maximumPoolTokensToDeposit,
+        // @audit-info deadline not being used
+        // if someone sets a deadline, lets say next block
+        // they could still deposit !!!
         uint64 deadline
     )
         external
@@ -103,10 +108,12 @@ contract TSwapPool is ERC20 {
         returns (uint256 liquidityTokensToMint)
     {
         if (wethToDeposit < MINIMUM_WETH_LIQUIDITY) {
+            // @audit-info MINIMUM_WETH_LIQUIDITY is a constant and therefore not required to be emmited
             revert TSwapPool__WethDepositAmountTooLow(MINIMUM_WETH_LIQUIDITY, wethToDeposit);
         }
         if (totalLiquidityTokenSupply() > 0) {
             uint256 wethReserves = i_wethToken.balanceOf(address(this));
+            // @audit-gas don't need this line
             uint256 poolTokenReserves = i_poolToken.balanceOf(address(this));
             // Our invariant says weth, poolTokens, and liquidity tokens must always have the same ratio after the
             // initial deposit
@@ -128,12 +135,20 @@ contract TSwapPool is ERC20 {
             // wethToDeposit / (wethReserves / poolTokenReserves) = poolTokensToDeposit
             // (wethToDeposit * poolTokenReserves) / wethReserves = poolTokensToDeposit
             uint256 poolTokensToDeposit = getPoolTokensToDepositBasedOnWeth(wethToDeposit);
+            // e if we calculate too many pool tokens to deposit, we revert
+            // deposit 10 WETH
+            // getPoolTokensToDepositBasedOnWeth -> $1,000,000 -> revert
             if (maximumPoolTokensToDeposit < poolTokensToDeposit) {
                 revert TSwapPool__MaxPoolTokenDepositTooHigh(maximumPoolTokensToDeposit, poolTokensToDeposit);
             }
 
             // We do the same thing for liquidity tokens. Similar math.
+            // e 10 WETH * 100 LP / WETH
+            // e 10 LP
+
             liquidityTokensToMint = (wethToDeposit * totalLiquidityTokenSupply()) / wethReserves;
+            // e deposit 10 WETH -> 10% of the LP tokens
+            // e deposit 10 WETH -> 2%, revert
             if (liquidityTokensToMint < minimumLiquidityTokensToMint) {
                 revert TSwapPool__MinLiquidityTokensToMintTooLow(minimumLiquidityTokensToMint, liquidityTokensToMint);
             }
@@ -142,6 +157,9 @@ contract TSwapPool is ERC20 {
             // This will be the "initial" funding of the protocol. We are starting from blank here!
             // We just have them send the tokens in, and we mint liquidity tokens based on the weth
             _addLiquidityMintAndTransfer(wethToDeposit, maximumPoolTokensToDeposit, wethToDeposit);
+            // e not a state variable
+            // audit-info It would be better if this was before the `_addLiquidityMintAndTransfer` call
+            // to follow CEI
             liquidityTokensToMint = wethToDeposit;
         }
     }
@@ -157,7 +175,10 @@ contract TSwapPool is ERC20 {
     )
         private
     {
+        // e follows CEI
         _mint(msg.sender, liquidityTokensToMint);
+        // @audit-low this is backwards!
+        // Should be (msg.sender, wethTodeposit, poolTokensToDeposit);
         emit LiquidityAdded(msg.sender, poolTokensToDeposit, wethToDeposit);
 
         // Interactions
@@ -273,7 +294,10 @@ contract TSwapPool is ERC20 {
         public
         revertIfZero(inputAmount)
         revertIfDeadlinePassed(deadline)
-        returns (uint256 output)
+        returns (
+            // @audit-low
+            uint256 output
+        )
     {
         uint256 inputReserves = inputToken.balanceOf(address(this));
         uint256 outputReserves = outputToken.balanceOf(address(this));
