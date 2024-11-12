@@ -42,6 +42,7 @@ contract TSwapPool is ERC20 {
     //////////////////////////////////////////////////////////////*/
     event LiquidityAdded(address indexed liquidityProvider, uint256 wethDeposited, uint256 poolTokensDeposited);
     event LiquidityRemoved(address indexed liquidityProvider, uint256 wethWithdrawn, uint256 poolTokensWithdrawn);
+    // @audit-info 3 events should be indexed if there are more than 3 parameters
     event Swap(address indexed swapper, IERC20 tokenIn, uint256 amountTokenIn, IERC20 tokenOut, uint256 amountTokenOut);
 
     /*//////////////////////////////////////////////////////////////
@@ -256,6 +257,7 @@ contract TSwapPool is ERC20 {
         // inputReserves*outputAmount = inputAmount(outputReserves - outputAmount)
         // inputAmount = (inputReserves * outputAmount) / (outputReserves - outputAmount)
         // plus fees... ignore for now
+        // @audit-info magic numbers
 
         return ((inputReserves * outputAmount) * 10000) / ((outputReserves - outputAmount) * 997);
     }
@@ -267,6 +269,7 @@ contract TSwapPool is ERC20 {
         uint256 minOutputAmount,
         uint64 deadline
     )
+        // @audit-info this should be external
         public
         revertIfZero(inputAmount)
         revertIfDeadlinePassed(deadline)
