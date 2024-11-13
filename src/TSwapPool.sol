@@ -42,7 +42,7 @@ contract TSwapPool is ERC20 {
     //////////////////////////////////////////////////////////////*/
     event LiquidityAdded(address indexed liquidityProvider, uint256 wethDeposited, uint256 poolTokensDeposited);
     event LiquidityRemoved(address indexed liquidityProvider, uint256 wethWithdrawn, uint256 poolTokensWithdrawn);
-    // @audit-info 3 events should be indexed if there are more than 3 parameters
+    // @written-info 3 events should be indexed if there are more than 3 parameters
     event Swap(address indexed swapper, IERC20 tokenIn, uint256 amountTokenIn, IERC20 tokenOut, uint256 amountTokenOut);
 
     /*//////////////////////////////////////////////////////////////
@@ -73,7 +73,7 @@ contract TSwapPool is ERC20 {
     )
         ERC20(liquidityTokenName, liquidityTokenSymbol)
     {
-        // @audit-info Lacking zero address check
+        // @written-info Lacking zero address check
         i_wethToken = IERC20(wethToken);
         i_poolToken = IERC20(poolToken);
     }
@@ -98,7 +98,7 @@ contract TSwapPool is ERC20 {
         uint256 wethToDeposit,
         uint256 minimumLiquidityTokensToMint,
         uint256 maximumPoolTokensToDeposit,
-        // @audit-info deadline not being used
+        // @written-high deadline not being used
         // if someone sets a deadline, lets say next block
         // they could still deposit !!!
         uint64 deadline
@@ -108,12 +108,12 @@ contract TSwapPool is ERC20 {
         returns (uint256 liquidityTokensToMint)
     {
         if (wethToDeposit < MINIMUM_WETH_LIQUIDITY) {
-            // @audit-info MINIMUM_WETH_LIQUIDITY is a constant and therefore not required to be emmited
+            // @reported-info MINIMUM_WETH_LIQUIDITY is a constant and therefore not required to be emmited
             revert TSwapPool__WethDepositAmountTooLow(MINIMUM_WETH_LIQUIDITY, wethToDeposit);
         }
         if (totalLiquidityTokenSupply() > 0) {
             uint256 wethReserves = i_wethToken.balanceOf(address(this));
-            // @audit-gas don't need this line
+            // @reported-gas don't need this line
             uint256 poolTokenReserves = i_poolToken.balanceOf(address(this));
             // Our invariant says weth, poolTokens, and liquidity tokens must always have the same ratio after the
             // initial deposit
@@ -177,7 +177,7 @@ contract TSwapPool is ERC20 {
     {
         // e follows CEI
         _mint(msg.sender, liquidityTokensToMint);
-        // @audit-low this is backwards!
+        // @reported-low this is backwards!
         // Should be (msg.sender, wethTodeposit, poolTokensToDeposit);
         emit LiquidityAdded(msg.sender, poolTokensToDeposit, wethToDeposit);
 
@@ -252,6 +252,8 @@ contract TSwapPool is ERC20 {
         // totalPoolTokensOfPool) + (wethToDeposit * poolTokensToDeposit) = k
         // (totalWethOfPool * totalPoolTokensOfPool) + (wethToDeposit * totalPoolTokensOfPool) = k - (totalWethOfPool *
         // poolTokensToDeposit) - (wethToDeposit * poolTokensToDeposit)
+        // @written-info magic numbers
+        // 0.03% fee
         uint256 inputAmountMinusFee = inputAmount * 997;
         uint256 numerator = inputAmountMinusFee * outputReserves;
         uint256 denominator = (inputReserves * 1000) + inputAmountMinusFee;
@@ -278,24 +280,28 @@ contract TSwapPool is ERC20 {
         // inputReserves*outputAmount = inputAmount(outputReserves - outputAmount)
         // inputAmount = (inputReserves * outputAmount) / (outputReserves - outputAmount)
         // plus fees... ignore for now
-        // @audit-info magic numbers
+        // @written-info magic numbers
 
+        // 997 / 10_000
+        // 91.3% fee???
+        // @written-high
         return ((inputReserves * outputAmount) * 10000) / ((outputReserves - outputAmount) * 997);
     }
 
+    // @written-info where is the natspec?
     function swapExactInput(
-        IERC20 inputToken,
-        uint256 inputAmount,
-        IERC20 outputToken,
-        uint256 minOutputAmount,
-        uint64 deadline
+        IERC20 inputToken, // e input token to swap / sell ie DAI
+        uint256 inputAmount, // e amount of input token to sell ie DAI
+        IERC20 outputToken, // Output token to buy / buy ie: WETH
+        uint256 minOutputAmount, // minimum output amount expected to recieve
+        uint64 deadline // e deadline for when the transaction should expire
     )
-        // @audit-info this should be external
+        // @written-info this should be external
         public
         revertIfZero(inputAmount)
         revertIfDeadlinePassed(deadline)
         returns (
-            // @audit-low
+            // @written-low protocol is giving out the wrong return
             uint256 output
         )
     {
@@ -323,10 +329,12 @@ contract TSwapPool is ERC20 {
      * @param outputAmount The exact amount of tokens to send to caller
      * @audit-info Missing deadline param in natspec
      */
+    // q why are we not getting the maximum input amount?
     function swapExactOutput(
         IERC20 inputToken,
         IERC20 outputToken,
         uint256 outputAmount,
+        // uint256 maxInputAmount,
         uint64 deadline
     )
         public
@@ -339,6 +347,10 @@ contract TSwapPool is ERC20 {
 
         inputAmount = getInputAmountBasedOnOutput(outputAmount, inputReserves, outputReserves);
 
+        // No slippage protection!
+        // @written-high need a max input amount
+        // MEV attack
+
         _swap(inputToken, inputAmount, outputToken, outputAmount);
     }
 
@@ -348,6 +360,9 @@ contract TSwapPool is ERC20 {
      * @return wethAmount amount of WETH received by caller
      */
     function sellPoolTokens(uint256 poolTokenAmount) external returns (uint256 wethAmount) {
+        // pool token -> input
+        // @written-high This is is wrong!!
+        // swaptExactInput(minWethToRecieve)
         return swapExactOutput(i_poolToken, i_wethToken, poolTokenAmount, uint64(block.timestamp));
     }
 
@@ -394,6 +409,7 @@ contract TSwapPool is ERC20 {
     }
 
     /// @notice a more verbose way of getting the total supply of liquidity tokens
+    // @audit-info this should be external
     function totalLiquidityTokenSupply() public view returns (uint256) {
         return totalSupply();
     }
